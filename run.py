@@ -187,7 +187,7 @@ statefilter =  ((cites['citing_patent_state'] != cites['cited_patent_state']) \
 #session.execute('drop table michigan_filtered;')
 cites_to_michigan = cites[statefilter]
 cites_to_michigan = cites_to_michigan.drop_duplicates(cols=['citing_patent','michigan_patent'])
-cites_to_michigan.to_csv('cites_to_michigan.csv',index=False,encoding='utf-8')
+cites_to_michigan.to_csv('cites_to_michigan.csv',index=False,cols=['citing_patent_grant_date','citing_patent','michigan_patent','citing_patent_state','cited_patent_state'],encoding='utf-8')
 print len(cites_to_michigan), "citations to michigan patents with matched nonenforce patents"
 
 # get citations to the other nonenforce patents
@@ -282,7 +282,38 @@ out.to_csv('yeardata.csv',index=False,encoding='utf-8')
 print out.mean()
 plt.figure()
 out.mean()[1:].plot()
+out.mean()[1:].to_csv('means.csv',index=False)
 plt.savefig('means.png')
+
+plt.clf()
+for row in out.iterrows():
+    row[1][2:].plot()
+plt.savefig('all.png')
+
+response = []
+predictor = []
+for row in out.iterrows():
+    response.extend(row[1][2:])
+    grant_year_michigan = data.irow(row[0])['grant_date_x'].year
+    before = [0] * (grant_year_michigan - 1976)
+    after = [1] * (2014 - grant_year_michigan)
+    predictor.extend(before + after)
+
+plt.clf()
+out.sum()[2:].plot()
+plt.savefig('sum.png')
+
+for i in range(1976,2014):
+    out[i] = out[i].apply(abs)
+plt.clf()
+out.sum()[2:].plot()
+plt.savefig('absolute_sum.png')
+
+m = {'response': response, 'predictor': predictor}
+import scipy.io
+import os
+os.remove('data.mat')
+scipy.io.savemat('data.mat',m)
 
 # play with results
 import IPython
