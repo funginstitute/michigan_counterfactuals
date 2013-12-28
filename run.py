@@ -279,6 +279,18 @@ del out['state_y']
 del out['patent_y']
 del out['michigan_patent']
 out.to_csv('yeardata.csv',index=False,encoding='utf-8')
+
+yeardata_withnulls = out
+records = []
+for row in yeardata_withnulls.iterrows():
+    grant_year = data.irow(row[0])['grant_date_x'].year
+    prefix = row[1][:2]
+    before = ['.'] * (grant_year - 1976 + 1)
+    after = row[1][2:][(grant_year - 1976 + 1):]
+    records.append(list(prefix) + list(before) + list(after))
+withnulls = pd.DataFrame.from_records(records)
+withnulls.to_csv('yeardata_withnulls.csv',index=False,encoding='utf-8')
+
 print out.mean()
 plt.figure()
 out.mean()[1:].plot()
@@ -294,8 +306,8 @@ response = []
 predictor = []
 for row in out.iterrows():
     grant_year_michigan = data.irow(row[0])['grant_date_x'].year
-    resp_before = [0] * (grant_year_michigan - 1976)
-    resp_after = row[1][2:][(grant_year_michigan - 1976):]
+    resp_before = [0] * (grant_year_michigan - 1976 + 1)
+    resp_after = row[1][2:][(grant_year_michigan - 1976 + 1):]
     response.extend(list(resp_before) + list(resp_after))
     pred_before = [0] * (grant_year_michigan - 1976)
     pred_after = [1] * (2014 - grant_year_michigan)
