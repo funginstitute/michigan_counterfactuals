@@ -315,6 +315,9 @@ import os
 os.remove('data.mat')
 scipy.io.savemat('data.mat',m)
 
-# play with results
-import IPython
-IPython.embed(user_ns=locals())
+print "N (years) =",len(range(1976,2014))
+print "D (panels) =",len(out)
+
+## play with results
+#import IPython
+#IPython.embed(user_ns=locals())
