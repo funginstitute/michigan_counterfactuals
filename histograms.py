@@ -21,7 +21,7 @@ michigandistances = michigandistances[michigandistances['michigan'] != michigand
 
 def plot(*numbers):
     if not numbers:
-        michigandistances['similarity'].hist(bins=8,range=(0.2,1.0))
+        michigandistances['similarity'].hist(bins=16,range=(0.2,1.0))
         plt.savefig('histogram.png')
     else:
         for number in numbers:
@@ -30,7 +30,7 @@ def plot(*numbers):
             tmp = michigandistances[michigandistances['michigan'] == number]
             empty = {'michigan': [number], 'similar': [number], 'similarity': [1.0]}
             tmp = pd.concat((tmp, pd.DataFrame.from_dict(empty)))
-            tmp['similarity'].hist(bins=8,range=(0.2,1.0))
+            tmp['similarity'].hist(bins=16,range=(0.2,1.0))
             plt.savefig('{0}_histogram.png'.format(number))
 
 if __name__=='__main__':
