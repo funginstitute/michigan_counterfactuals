@@ -1,6 +1,7 @@
 import pandas as pd
 
 from matplotlib import pyplot as plt
+from scipy.stats import mode
 
 from sqlalchemy import create_engine, MetaData, Table, inspect, VARCHAR, Column
 from sqlalchemy.sql import select
@@ -56,20 +57,29 @@ for michigan_patent in distances['michigan']:
 t.insert().prefix_with("IGNORE").execute(inserts)
 michigan_patent_data = session.execute("select patent.id as patent, patent.date as grant_date, \
                  application.date as application_date, rawassignee.organization as \
-                 assignee, count(*) as number_inventors, location.state from patent \
-                 right join michigan on michigan.number = patent.id \
+                 assignee, 1 as num_inventors, location.state from michigan \
+                 left join patent on michigan.number = patent.id \
                  left join application on application.patent_id = patent.id \
                  left join rawassignee on rawassignee.patent_id = patent.id \
                  left join rawinventor on rawinventor.patent_id = patent.id \
                  left join rawlocation on rawlocation.id = rawinventor.rawlocation_id \
-                 left join location on location.id = rawlocation.location_id \
-                 group by patent.id;").fetchall()
+                 left join location on location.id = rawlocation.location_id;").fetchall()
 mpd = pd.DataFrame.from_records(michigan_patent_data)
 mpd.columns = ['patent','grant date','app date','assignee','num inventors','state']
 mpd['patent'] = mpd['patent'].apply(str)
-mpd = mpd[mpd['state'] == 'MI'] # filter to get patents where first inventor is from Michigan
-print len(mpd),"patents from MI"
-session.execute('drop table michigan;')
+"""
+Here, filter so we get only patents that have only Michigan inventors
+"""
+non_full_michigan_patents = set(mpd[mpd['state'] != 'MI']['patent'])
+full_michigan = []
+for row in mpd.iterrows():
+    if row[1]['patent'] not in non_full_michigan_patents:
+        full_michigan.append(row[1])
+mpd = pd.DataFrame.from_records(full_michigan)
+mpd = mpd.drop_duplicates(['patent'])
+#import IPython
+#IPython.embed(user_ns=locals())
+print len(mpd),"patents from MI with only Michigan inventors"
 
 # similar patent metadata
 
@@ -97,7 +107,6 @@ spd = pd.DataFrame.from_records(similar_patent_data)
 spd.columns = ['patent','grant date','app date','assignee','num inventors','state']
 spd['patent'] = spd['patent'].apply(str)
 print len(spd), "similar patents"
-session.execute('drop table similar;')
 
 
 """
@@ -184,10 +193,9 @@ statefilter =  ((cites['citing_patent_state'] != cites['cited_patent_state']) \
                & ((cites['citing_patent_state'] == 'AK') | (cites['citing_patent_state'] == 'CA') | (cites['citing_patent_state'] == 'CT') | (cites['citing_patent_state'] == 'MN') \
                | (cites['citing_patent_state'] == 'MT') | (cites['citing_patent_state'] == 'ND') | (cites['citing_patent_state'] == 'NV') | (cites['citing_patent_state'] == 'OK') \
                | (cites['citing_patent_state'] == 'WA') | (cites['citing_patent_state'] == 'WV') | (cites['citing_patent_state'] == 'MI')))
-#session.execute('drop table michigan_filtered;')
 cites_to_michigan = cites[statefilter]
 cites_to_michigan = cites_to_michigan.drop_duplicates(cols=['citing_patent','michigan_patent'])
-cites_to_michigan.to_csv('cites_to_michigan.csv',index=False,cols=['citing_patent_grant_date','citing_patent','michigan_patent','citing_patent_state','cited_patent_state'],encoding='utf-8')
+cites_to_michigan.to_csv('cites_to_michigan.csv',index=False,encoding='utf-8')
 print len(cites_to_michigan), "citations to michigan patents with matched nonenforce patents"
 
 # get citations to the other nonenforce patents
@@ -219,14 +227,13 @@ cites = tmp[['citing_patent_assignee','citing_patent_grant_date','state','citing
 cites.columns = ['citing_patent_assignee','citing_patent_grant_date','cited_patent_state','citing_patent','nonenforce_patent','citing_patent_state','cited_patent_assignee']
 cites = cites[cites['citing_patent_assignee'] != cites['cited_patent_assignee']] # filter out cites by same firm
 cites.index = cites['citing_patent']
-session.execute('drop table nonenforce;')
 statefilter =  ((cites['citing_patent_state'] != cites['cited_patent_state']) \
                & ((cites['citing_patent_state'] == 'AK') | (cites['citing_patent_state'] == 'CA') | (cites['citing_patent_state'] == 'CT') | (cites['citing_patent_state'] == 'MN') \
                | (cites['citing_patent_state'] == 'MT') | (cites['citing_patent_state'] == 'ND') | (cites['citing_patent_state'] == 'NV') | (cites['citing_patent_state'] == 'OK') \
                | (cites['citing_patent_state'] == 'WA') | (cites['citing_patent_state'] == 'WV') | (cites['citing_patent_state'] == 'MI')))
 cites_to_nonenforces = cites[statefilter]
 cites_to_nonenforces = cites_to_nonenforces.drop_duplicates(cols=['citing_patent','nonenforce_patent'])
-cites_to_nonenforces.to_csv('cites_to_nonenforces.csv',cols=['citing_patent_grant_date','citing_patent','nonenforce_patent','citing_patent_state','cited_patent_state'],index=False,encoding='utf-8')
+cites_to_nonenforces.to_csv('cites_to_nonenforces.csv',index=False,encoding='utf-8')
 print len(cites_to_nonenforces), "citations to nonenforce patents"
 
 """
@@ -291,7 +298,6 @@ for row in yeardata_withnulls.iterrows():
 withnulls = pd.DataFrame.from_records(records)
 withnulls.to_csv('yeardata_withnulls.csv',index=False,encoding='utf-8')
 
-print out.mean()
 plt.figure()
 out.mean()[1:].plot()
 out.mean()[1:].to_csv('means.csv',index=False)
@@ -331,6 +337,115 @@ scipy.io.savemat('data.mat',m)
 
 print "N (years) =",len(range(1976,2014))
 print "D (panels) =",len(out)
+
+"""
+Now need to do descriptive stats to compare the treatment (Michigan) and control (nonenforce) sets.
+Stuff like # inventors, full # of cites, etc
+
+treatment - mpd (table = michigan)
+control - spd (table = similar)
+"""
+
+# inventors per patent
+inv_per_patent_michigan = session.execute("select patent_id, count(*) from rawinventor \
+                                           right join michigan_filtered on michigan_filtered.number = rawinventor.patent_id \
+                                           group by patent_id;").fetchall()
+inv_per_patent_michigan = pd.DataFrame.from_records(inv_per_patent_michigan)
+inv_per_patent_michigan.columns = ['patent','num_inventors']
+
+print "Number of Inventors per Michigan Patent"
+print "mean",inv_per_patent_michigan['num_inventors'].mean()
+print "median",inv_per_patent_michigan['num_inventors'].median()
+print "mode",mode(inv_per_patent_michigan['num_inventors'])[0][0]
+print "std",inv_per_patent_michigan['num_inventors'].std()
+print "max",inv_per_patent_michigan['num_inventors'].max()
+print "min",inv_per_patent_michigan['num_inventors'].min()
+print "count",inv_per_patent_michigan['num_inventors'].sum()
+print
+
+inv_per_patent_similar = session.execute("select patent_id, count(*) from rawinventor \
+                                           right join nonenforce on nonenforce.number = rawinventor.patent_id \
+                                           group by patent_id;").fetchall()
+inv_per_patent_similar = pd.DataFrame.from_records(inv_per_patent_similar)
+inv_per_patent_similar.columns = ['patent', 'num_inventors']
+
+print "Number of Inventors per nonenforce Patent"
+print "mean",inv_per_patent_similar['num_inventors'].mean()
+print "median",inv_per_patent_similar['num_inventors'].median()
+print "mode",mode(inv_per_patent_similar['num_inventors'])[0][0]
+print "std",inv_per_patent_similar['num_inventors'].std()
+print "max",inv_per_patent_similar['num_inventors'].max()
+print "min",inv_per_patent_similar['num_inventors'].min()
+print "count",inv_per_patent_similar['num_inventors'].sum()
+print
+
+# citations per patent
+all_cites_to_michigan = session.execute("select michigan_filtered.number, YEAR(patent.date), 1 from uspatentcitation \
+                                         right join michigan_filtered on michigan_filtered.number = uspatentcitation.citation_id \
+                                         left join patent on patent.id = uspatentcitation.patent_id;").fetchall()
+all_cites_to_michigan = pd.DataFrame.from_records(all_cites_to_michigan)
+all_cites_to_michigan.columns = ['number','year', 'count']
+
+print "Number of pre1985 Forward Citations to Michigan"
+tmp = all_cites_to_michigan[all_cites_to_michigan['year'] < 1985]
+tmp = tmp.groupby('number').size()
+print "mean",tmp.mean()
+print "median",tmp.median()
+print "mode",mode(tmp)[0][0]
+print "std",tmp.std()
+print "max",tmp.max()
+print "min",tmp.min()
+print "count",tmp.sum()
+print
+
+print "Number of post1985 Forward Citations to Michigan"
+tmp = all_cites_to_michigan[all_cites_to_michigan['year'] > 1985]
+tmp = tmp.groupby('number').size()
+print "mean",tmp.mean()
+print "median",tmp.median()
+print "mode",mode(tmp)[0][0]
+print "std",tmp.std()
+print "max",tmp.max()
+print "min",tmp.min()
+print "count",tmp.sum()
+print
+
+all_cites_to_nonenforce = session.execute("select nonenforce.number, YEAR(patent.date), 1 from uspatentcitation \
+                                         right join nonenforce on nonenforce.number = uspatentcitation.citation_id \
+                                         left join patent on patent.id = uspatentcitation.patent_id;").fetchall()
+all_cites_to_nonenforce = pd.DataFrame.from_records(all_cites_to_nonenforce)
+all_cites_to_nonenforce.columns = ['number','year','count']
+
+print "Number of pre1985 Forward Citations to Nonenforce"
+tmp = all_cites_to_nonenforce[all_cites_to_nonenforce['year'] < 1985]
+tmp = tmp.groupby('number').size()
+print "mean",tmp.mean()
+print "median",tmp.median()
+print "mode",mode(tmp)[0][0]
+print "std",tmp.std()
+print "max",tmp.max()
+print "min",tmp.min()
+print "count",tmp.sum()
+print
+
+print "Number of post1985 Forward Citations to Nonenforce"
+tmp = all_cites_to_nonenforce[all_cites_to_michigan['year'] > 1985]
+tmp = tmp.groupby('number').size()
+print "mean",tmp.mean()
+print "median",tmp.median()
+print "mode",mode(tmp)[0][0]
+print "std",tmp.std()
+print "max",tmp.max()
+print "min",tmp.min()
+print "count",tmp.sum()
+print
+
+
+# clean up database
+session.execute('drop table michigan;')
+session.execute('drop table similar;')
+session.execute('drop table michigan_filtered;')
+session.execute('drop table nonenforce;')
 
 ## play with results
 #import IPython
