@@ -8,6 +8,7 @@ def trim_fraction(text):
 cites = pd.read_csv('cites_to_control.tsv',delimiter='\t')
 cites['cited'] = cites['cited'].astype(str).apply(trim_fraction)
 cites['citing'] = cites['citing'].astype(str).apply(trim_fraction)
+cites = cites.drop_duplicates(cols=['cited','citing'])
 
 x = cites.copy()
 for y in range(1975,2014):
