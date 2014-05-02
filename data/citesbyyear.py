@@ -6,8 +6,13 @@ def trim_fraction(text):
     return text
 
 cites = pd.read_csv('cites_to_control.tsv',delimiter='\t')
+control = pd.read_csv('control.csv',header=None)
+control[1] = control[1].astype(str).apply(trim_fraction)
 cites['cited'] = cites['cited'].astype(str).apply(trim_fraction)
 cites['citing'] = cites['citing'].astype(str).apply(trim_fraction)
+merged = pd.merge(control,cites,left_on=1,right_on='cited')
+merged = merged[merged[0] != merged['state']]
+cites = merged[['citing','cited','citing_year']]
 cites = cites.drop_duplicates(cols=['cited','citing'])
 
 x = cites.copy()

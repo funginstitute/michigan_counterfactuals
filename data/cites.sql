@@ -1,4 +1,4 @@
-select uspatentcitation.patent_id as citing, citation_id as cited, year(patent.date) as citing_year from tmp 
+select uspatentcitation.patent_id as citing, citation_id as cited, year(patent.date) as citing_year, location.state as state from tmp 
 left join uspatentcitation on citation_id = tmp.number
 left join patent on patent.id = patent_id
 left join rawinventor on rawinventor.patent_id = uspatentcitation.patent_id
