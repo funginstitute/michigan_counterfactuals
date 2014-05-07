@@ -21,6 +21,7 @@ def trim_fraction(text):
 #print 'trim 4'
 
 merged = pd.merge(md,p,left_on=[0,1],right_on=[0,1])
+merged = merged.drop_duplicates(cols=[0,1])
 print 'merged'
 
 merged = merged.sort(2)
